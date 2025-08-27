@@ -15,11 +15,15 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "i": "^0.3.7",
     "jsonwebtoken": "^9.0.2",
     "mogoose": "^0.0.1-security",
     "mongoose": "^8.17.1",
     "nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
-    "openai": "^5.12.2"
+    "npm": "^11.5.2",
+    "openai": "^5.12.2",
+    "twilio": "^5.8.0",
+    "wallee": "^4.7.0"
   }
 }

@@ -1,6 +1,6 @@
 // controllers/Image.js
 const axios = require("axios");
-
+const UserToken = require("../models/UserToken");
 /** Dedup + normalize image URLs */
 function getUniqueUrls(urls) {
   const seen = new Set();
@@ -41,16 +41,17 @@ async function withBackoff(fn, retries = 5, delay = 2000) {
 }
 
 /**
- * GET /api/images?barcode=12345&num=5
- * - barcode: required
+ * GET /api/images?q=query&num=5
+ * - q: required (the search query, e.g., barcode, description, or any field value)
  * - num: optional (1..10). If omitted, falls back to env MAX_IMAGES_PER_QUERY or 5 (capped at 10)
  */
 async function getImages(req, res) {
-  const { barcode } = req.query;
+  const { q } = req.query;
   let { num } = req.query;
+  const usertoken = await UserToken.findOne({ user: req.user.id });
 
-  if (!barcode) {
-    return res.status(400).json({ success: false, error: "Barcode required" });
+  if (!q) {
+    return res.status(400).json({ success: false, error: "Query required" });
   }
 
   try {
@@ -67,14 +68,13 @@ async function getImages(req, res) {
       process.env.GOOGLE_API_KEY || "AIzaSyCqzE5GJ-BZwFe6uJbNcfH3zxOds2u15Ro"; // move to env in prod
     const cseId = process.env.GOOGLE_CSE_ID || "231c131391d58460d";
 
-    console.log(`Fetching images for barcode: ${barcode} (num=${desired})`);
+    console.log(`Fetching images for query: ${q} (num=${desired})`);
     const { data } = await withBackoff(() =>
       axios.get("https://www.googleapis.com/customsearch/v1", {
         params: {
           key: apiKey,
           cx: cseId,
-          // IMPORTANT: query on barcode; could be expanded to include description etc.
-          q: barcode,
+          q: q,
           searchType: "image",
           num: desired,
           filter: "0",
@@ -87,14 +87,23 @@ async function getImages(req, res) {
     const urls = items.map((i) => i?.link).filter(Boolean);
     const unique = getUniqueUrls(urls);
 
-    console.log(`Fetched ${unique.length} images for ${barcode}`);
+    if (unique.length > 0) {
+      const total_cost = 8;
+      usertoken.available_tokens -= total_cost;
+      await usertoken.save();
+    } else if (unique.length === 0) {
+      const total_cost = 2;
+      usertoken.available_tokens -= total_cost;
+      await usertoken.save();
+    }
+    console.log(unique);
     return res.json({ success: true, data: unique });
   } catch (error) {
     const status = error?.response?.status || 500;
     let msg = "An unexpected error occurred.";
     if (status === 429) {
       msg = "Rate limit exceeded. Please try again later or contact support.";
-      console.error(`Rate limit exhausted for barcode: ${req.query.barcode}.`);
+      console.error(`Rate limit exhausted for query: ${req.query.q}.`);
     } else if (status >= 500) {
       msg = "Server error. Please try again later.";
     }

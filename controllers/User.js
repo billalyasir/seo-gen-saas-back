@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const UserToken = require("../models/UserToken");
 require("dotenv").config();
 
 /* ===========================
@@ -60,11 +61,11 @@ function signJwt(user) {
   return jwt.sign(
     {
       id: user._id.toString(),
-      role: user.role || "user",
+      isAdmin: user.isAdmin || false,
       pca: user.passwordChangedAt?.getTime() || 0,
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "1h" }
+    { expiresIn: process.env.JWT_EXPIRES_IN || "999d" }
   );
 }
 
@@ -153,8 +154,6 @@ const signup = async (req, res) => {
       name,
       email: lowerEmail,
       password: hashed,
-      role:
-        role && ["user", "admin", "manager"].includes(role) ? role : undefined,
       isVerified: false,
     });
 
@@ -167,7 +166,24 @@ const signup = async (req, res) => {
     user.verificationTokenHash = hash;
     user.verificationTokenExpires = expires;
     await user.save();
-
+    if (user) {
+      // Utility: pick only allowed fields from a source object
+      const pick = (src, fields) => {
+        const out = {};
+        fields.forEach((f) => {
+          if (src[f] !== undefined) out[f] = src[f];
+        });
+        return out;
+      };
+      const payload = pick(req.body, [
+        "available_tokens",
+        "total_amout_spent_from_the_first",
+        "total_tokens_from_the_first",
+        "total_token_used_from_the_first",
+        "expiration",
+      ]);
+      await UserToken.create({ user: user._id, ...payload });
+    }
     const link = buildVerifyLink(verifyToken);
     try {
       await sendMail({
@@ -179,7 +195,6 @@ const signup = async (req, res) => {
     } catch (mailErr) {
       console.error("SIGNUP_VERIFY_MAIL_ERROR:", mailErr);
     }
-
     // Don't issue JWT yet; require verification first
     return res.status(201).json({
       message:

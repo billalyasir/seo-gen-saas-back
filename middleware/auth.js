@@ -14,11 +14,11 @@ async function protect(req, res, next) {
 
     // Load current user to confirm existence and password change invalidation
     const user = await User.findById(decoded.id).select(
-      "_id role passwordChangedAt isVerified"
+      "_id isAdmin passwordChangedAt isVerified"
     );
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    // Invalidate tokens issued before last password change (iat is in seconds)
+    // Invalidate tokens issued before last password change (iat in seconds)
     const tokenIssuedAtMs = (decoded.iat || 0) * 1000;
     const pca = user.passwordChangedAt?.getTime?.() || 0;
     if (pca && tokenIssuedAtMs < pca) {
@@ -29,9 +29,10 @@ async function protect(req, res, next) {
 
     req.user = {
       id: user._id.toString(),
-      role: user.role || "user",
+      isAdmin: user.isAdmin || false,
       isVerified: !!user.isVerified,
     };
+
     next();
   } catch (err) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -50,10 +51,10 @@ function requireVerified(req, res, next) {
 function authorize(...allowedRoles) {
   return (req, res, next) => {
     try {
-      if (!req.user?.role)
+      if (!req.user?.isAdmin)
         return res.status(401).json({ message: "Unauthorized" });
-      if (!allowedRoles.length) return next(); // no roles specified -> open to any authenticated user
-      if (!allowedRoles.includes(req.user.role)) {
+      if (!allowedRoles.length) return next(); // no roles specified -> allow any admin
+      if (!allowedRoles.includes(req.user.isAdmin)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       next();
@@ -63,4 +64,14 @@ function authorize(...allowedRoles) {
   };
 }
 
-module.exports = { protect, authorize, requireVerified };
+// Middleware: only allow admins
+function isAdmin(req, res, next) {
+  if (req.user?.isAdmin) {
+    return next();
+  }
+  return res
+    .status(403)
+    .json({ message: "Access denied. Only admins are allowed." });
+}
+
+module.exports = { protect, authorize, isAdmin, requireVerified };
