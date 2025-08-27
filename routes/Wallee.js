@@ -67,7 +67,7 @@ router.post("/wallee/checkout", async (req, res) => {
     tx.merchantReference = reference ?? `order-${Date.now()}`;
 
     // Redirects after hosted checkout:
-    tx.successUrl = `${frontendBaseUrl}/`; // recommend a dedicated page
+    tx.successUrl = `${frontendBaseUrl}/wallee/success`; // recommend a dedicated page
     tx.failedUrl = `${frontendBaseUrl}/wallee/failure`;
 
     // Create transaction
